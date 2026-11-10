@@ -305,6 +305,10 @@ only when it's green and a maintainer has fully reviewed it, code as well as wor
 - [x] `docs/opencode.md` still has one passage twice, missed by #1226: in "Configuration and
       execution", the older copy of the standalone-server sentence, cut off after "both"
       — claimed: youkaicountry, branch docs/r5.2-opencode-doubled-passage
+- [x] Let a UI change land with its new strings in English while native speakers review their
+      translations: `cargo xtask i18n-coverage` accepts strings listed as awaiting translation,
+      and the translation PR empties the list
+      — claimed: tanish2k09, branch chore/r5.2-awaiting-translation
 
 ### R5.3 A builder that can't make progress stops
 Owner: open · Status: todo
@@ -583,6 +587,10 @@ Owner: open · Status: todo
       OpenAI-compatible endpoint)
 - [ ] Failure logs for the other ways an AI stops (API backends, MCP server start-up), like the
       ones agent CLIs write to `logs/` in the config folder
+- [x] Settings → AI can replace or forget an API backend's saved key, so a key rotated in the
+      environment isn't hidden behind an older saved one (#1358); `ai key <name>` shows, replaces
+      or forgets it headlessly, and never prints it
+      — claimed: AlexJoaquimPereira, branch bugfix/r5.5-replace-saved-key
 
 ### R5.6 Tools report only what they saw
 Owner: open · Status: todo
@@ -627,8 +635,35 @@ yet, and the quick start is how every new person begins.
 - [ ] A live Windows build whose check stalls (Codex, a Godot project, as in the reports): the
       feed names the check it is in, the builder's own checks stop at their 30-minute limit,
       Pause acts between checks and stops a running build step, and a caught bug leaves "Needs you"
-- [ ] A live chat run with a big comparison result, to see Claude Code page it with
-      `core_evidence_browse` (and whether 80 KB is the right size)
+- [x] A live chat run with a big comparison result, to see Claude Code page it with
+      `core_evidence_browse` (and whether 80 KB is the right size). On macOS with `chat --deep`,
+      Claude Code 2.1.322 and two arm64 builds of `cargo` (Rust 1.97.1 and 1.99.0, ~30 MB each),
+      whose `app_builds_line_up` page is 581 KB: Claude Code asked for `detail: summary` itself,
+      then paged with `core_evidence_browse` (`matching`, `fields`; 7–14 KB a page) and quoted the
+      rows; no result reached the budget (largest 25 KB) in 23 calls ($1.14). Without `detail`,
+      the server answered the 581 KB page summary-first (4.8 KB, `continue_with`). 80 KB holds: a
+      79.5 KB page (`limit: 15`) reached Claude Code whole as 37.7 KB of text, about 17k of its
+      25k-token tool limit, and it quoted the page's last row correctly
+      — claimed: chordpli, branch test/r5.7-evidence-browse-live
+- [x] Neither the line-up's summary nor `core_evidence_browse`'s error names the lists it can
+      page: Claude Code asked for `list: "changed"` (a `show` value), got "changed isn't a list of
+      records… Leave them out to page it as it is", and ran the 20 s line-up again with
+      `show: changed` before finding `list: "pairs"` with `matching`. Name the lists (`pairs`,
+      `ambiguous`, `only_left`, `only_right`) in both. Every record's summary view (a
+      `detail: summary` answer, the summary-first answer over a connection's budget, browse's
+      `kind: summary`) now has `lists`, name → length, for the names browse reaches a list with;
+      browse's errors for a name that isn't a list name them too
+      — claimed: chordpli, branch bugfix/r5.7-browse-list-names
+- [x] Live-check the named lists in a Claude Code chat: the same two `cargo` builds, and the
+      agent pages `pairs` straight from the summary, without a wrong list or a second line-up.
+      Claude Code 2.1.322, same question: the summary carried `lists` (`pairs` 1448, `ambiguous`
+      612, `only_left` 29746, `only_right` 32342); it ran the line-up once and every browse
+      call asked for `pairs`, none failed (22 calls, $1.06)
+      — claimed: chordpli, branch bugfix/r5.7-browse-list-names
+- [ ] `app_builds_line_up` paired 1,448 of ~36,000 functions across two Rust toolchains: every
+      v0 crate hash (`Cs<hash>_`) changed, so exact names rarely match, and some masked-bytes
+      pairs are unrelated functions (`hex_encode` → `_git_oid_tostr`). Compare Rust names with
+      the crate hash left out
 - [ ] Live check on Windows: rebuild a project while its frozen pin runs, and the build isn't
       blocked
 
@@ -715,6 +750,8 @@ Owner: maintainers · Status: in progress
 
 ### R2.2 More coding agents
 Owner: open · Status: in progress
+- [x] Insert a missing YAML server table before an explicit document end marker.
+      — claimed: Plastic-time, branch rrfz/bugfix-r2.2-yaml-document-end
 - [x] Find Codex bundled with ChatGPT.app/Codex.app after a macOS Dock launch, and
       verify the selected CLI's sign-in through the headless connection check and Settings.
       — claimed: dbzx6r, branch bugfix/r2.2-macos-codex-signin-upstream
@@ -729,9 +766,10 @@ Owner: open · Status: in progress
 - [x] `doctor` looks a registration's bare command (`craft-anything-cli`, as a hand-made entry
       names it) up on PATH, as the app starting it does, instead of calling it missing.
       — claimed: Plastic-time, branch bugfix/r2.2-doctor-cli-on-path
-- [ ] Settings says when a saved agent program is gone and which one runs in its place; today a
-      build moves to the newest build folder or the usual program without saying so, and the
-      setting keeps the old path (read on a worker, not while drawing) (#721)
+- [x] Settings says when a saved agent program is gone and which one runs in its place
+      (`AiHub::replaced_programs`, read on a worker with the AI list), with "Use it" to save
+      that one when it's a file of its own (#721, #1468)
+      — claimed: FuryNocturn, branch feature/r2.2-saved-program-gone
 - [x] A build says in its feed when it runs another program than the one saved in Settings → AI
       (#721) — claimed: Agapenordev, branch bugfix/r2.2-build-says-replaced-program
 - [x] GitHub Copilot through its own CLI login and ACP, without credential import:
@@ -900,6 +938,8 @@ Owner: open · Status: in progress
       — claimed: Plastic-time, branch bugfix/r2.2-yaml-null-table
 - [ ] Live-check #116 on Windows: install Hermes natively, start the app from a launcher, and see
       Settings → AI offer it; #116's "error after every message" has no text yet (asked)
+- [x] Refuse multi-document YAML configs before planning edits or removing registrations.
+      — claimed: Plastic-time, branch rrfz/bugfix-r2.2-yaml-single-document
 - [x] A Hermes `config.yaml` that starts with a byte-order mark gets our entry in its own
       `mcp_servers` table, not in a second one that hides the person's servers from Hermes.
       — claimed: Plastic-time, branch bugfix/r2.2-yaml-config-bom
@@ -994,6 +1034,8 @@ Owner: open · Status: in progress
       — claimed: gtxy27, branch `bugfix/r2.2-dsh-stdin`
 - [ ] DeepSeek Harness: no resume (its headless profile keeps no session), and a build on the harness's
       desktop profile is untried
+- [x] Apply repeated client selections and aliases once, preserving their first selection order.
+      — claimed: Plastic-time, branch rrfz/bugfix-r2.2-deduplicate-clients
 - [ ] `setup` writes the plain `mcp` command, so it drops an `--all-tools` an entry already has, and
       `doctor` then calls that entry "a different copy or shape of the command" and suggests the very
       command that breaks it. The installed skill now warns against running `setup` on such an entry;
@@ -1030,6 +1072,10 @@ Owner: maintainers · Status: in progress
 
 ### R2.5 Behaviour checks for non-web builds
 Owner: open · Status: in progress
+- [x] Keep mechanics behavior unverified when only the sheet has been read: no literal-use claims,
+      persisted unknowns and an explicit usable-build summary; no builder retries for a missing oracle
+- [ ] Give console run comparisons a numeric-output oracle when needed: word likeness drops
+      single-character tokens, so bare `4.5` and `9.0` both compare as empty output
 - [ ] Behaviour checks that use the sheet: run the build with scripted input and measure values
       (speed, jump height, fire rate) against it (needs R2.4's scripted input)
 - [ ] Hold the self-test to what the check can see too: picture the game after its scripted
@@ -1208,9 +1254,10 @@ Gaps found while using the app for real projects.
       — claimed: AlexJoaquimPereira, branch bugfix/r2.9-mode-switch-study
 - [ ] Exercise a mode-switched API follow-up end to end: an other-mode transcript, a capture and a
       message must study again, not only the decision helper
-- [ ] Record which mode wrote `capture/`, so a failed run that leaves a capture from the other mode
+- [x] Record which mode wrote `capture/`, so a failed run that leaves a capture from the other mode
       isn't handed to a same-mode conversation; remove Deep-only capture files when a Clean room
       study replaces them
+      — claimed: AlexJoaquimPereira, branch bugfix/r2.9-capture-mode
 - [ ] A saved Claude `--resume`/`--continue` in the backend's extra arguments is refused in a
       Clean room build or question when it would reuse the project's Deep session, leaving
       unrelated arguments alone; unit and scripted CLI tests cover the build and question paths
@@ -1331,6 +1378,9 @@ Gaps found while using the app for real projects.
 - [x] Settings → AI: a card for an AI found on this computer wraps its description beside its Add
       button; the line didn't wrap and ran on under the button
       — claimed: jgt87, branch bugfix/r2.9-detected-cards-wrap — PR #1235
+- [x] Settings → AI: Providers, Harnesses and Detect share consistent spacing below the discovery
+      heading and wrap together, so the Detect action cannot overlap a tab
+      — claimed: istaari, branch bugfix/ai-detection-spacing — PR #1530
 - [x] The same action reads the same everywhere: a pin's menu said "Show folder" for what the project
       page calls "Open folder" (both `project_open_folder`), and a game's chosen folder was shown as a
       full path in its row, where other chosen folders are shortened, cut to fit and whole on hover
@@ -1425,12 +1475,21 @@ Owner: open · Status: in progress
       Source `540b4947aa1b`; [format checks](https://github.com/Afloat16/claude-mem/actions/runs/42633003467/job/129213811395) and [compatibility gates](https://github.com/Afloat16/claude-mem/actions/runs/42642583301/job/129247271153) passed.
 - [x] Unity: the float formats (RHalf, RGHalf, RGBAHalf, RFloat, RGFloat, RGBAFloat)
       — claimed: Afloat16, branch feature/r3.9-unity-float-textures
+- [x] Decode Unity RGB9e5 shared-exponent textures through the existing bounded picture exporter.
+      — claimed: Afloat16, branch feature/r3.9-rgb9e5-textures-20261110
 - [ ] Unreal 5 and Oodle: IoStore packages, unversioned properties and Oodle-compressed paks
 - [ ] Game files: save pictures from IoStore containers (needs the Unreal 5 support above)
 - [x] Unreal: decode cooked half- and full-precision floating-point textures with the shared bounded pixel reader.
       — claimed: Afloat16, branch feature/r3.9-unreal-float-textures-20261109
       Source `75b507c0b96f`; [format checks](https://github.com/Afloat16/claude-mem/actions/runs/42634877637/job/129220281335) and [compatibility gates](https://github.com/Afloat16/claude-mem/actions/runs/42642583301/job/129247271153) passed.
 - [ ] Unreal: sounds and meshes out (so a Deep-mode rebuild needs no outside converter for them)
+
+- [x] Decode Unity ETC1 RGB textures through the bounded picture exporter, including both block modes and clipped edges.
+      — claimed: Afloat16, branch feature/r3.9-etc1-textures-20261110
+- [x] Decode Unreal DXT3 (BC2) texture blocks, including explicit alpha and clipped edge blocks.
+      — claimed: Afloat16, branch feature/r3.9-dxt3-textures-20261110
+- [x] Decode Unity RG32, RGB48 and RGBA64 textures without discarding their 16-bit channel layout.
+      — claimed: Afloat16, branch feature/r3.9-unorm16-textures-20261110
 
 ### R3.11 Single-file apps, game files and stand-in backends
 Owner: open · Status: in progress
@@ -1456,7 +1515,10 @@ Owner: open · Status: in progress
       file can be checked
 - [x] Bun: take each module's stored source map and bytecode out as files.
       — claimed: Afloat16, branch feature/r3.11-bun-module-payloads
-- [ ] A standalone `.pyz`
+- [x] A standalone `.pyz`: a PyInstaller PYZ archive given on its own is its own packed reader
+      (`pyinstaller_pyz`), listing the program's modules and handing one back as a `.pyc`; a
+      Python zip application named `.pyz` stays with the ZIP reader
+      — claimed: muraa-p, branch feature/r3.11-standalone-pyz
 - [ ] `native_source_folder_write` uses the built-in decompiler only: use Ghidra in Deep mode when
       it's there
 - [x] Keep stand-in response samples distinct when headers, content types or body-availability metadata differ.
@@ -1469,16 +1531,45 @@ Owner: open · Status: in progress
       All 24 combined replay regressions pass locally on the refresh onto `cf414ff4`.
       See this PR's checks for the refreshed revision's complete gate.
       — claimed: Afloat16, branch bugfix/r3.11-standin-sample-metadata-20261103b
-- [ ] `native_publisher_show` hashes the file minus the signature fields, not section by section;
-      a file with unusual gaps between sections can read as different
+- [x] `native_publisher_show` hashes the file minus the signature fields, not section by section;
+      a file with unusual gaps between sections can read as different — the hash now follows
+      Windows' order (headers, each section by its data's file offset, then the bytes after them,
+      which Windows counts without the certificate table), the tool no longer warns that a gap
+      could read as different, and a regression puts a gap between sections
+      — claimed: muraa-p, branch bugfix/r3.11-publisher-hash-sections
 - [x] Enforce stand-in per-body and total byte budgets on the text that is actually retained after redaction;
       deduplicate consecutive samples before charging the capture budget.
       — claimed: Afloat16, branch bugfix/r3.11-standin-redacted-budget-20261103b
       Revision `d601bc4e` passed [full Linux CI](https://github.com/storytold/craft-anything/actions/runs/41788735130):
       all four retained-budget regressions and six deduplication regressions passed.
+- [x] A text source (a script, Markdown) had no tool that reads it as text outside a build (#539):
+      `build_file_read` works only while a project is being built, and the native tools stop at
+      "Unknown file magic", while triage pointed to `native_bytes_show`, whose error points back
+      to triage. Reproduced on `main` (`0c1f7f7`) with a `.md` and a `.ps1`. `core_text_read`
+      (Deep only) reads it paged by lines with coverage, counts invalid bytes and cuts long lines;
+      triage names it for a text file it doesn't otherwise recognise
+      — claimed: chordpli, branch feature/r3.11-text-source-read
+- [x] Live-check #539 in an agent chat (Codex, as reported, and Claude Code): the agent reaches
+      `core_text_read` for a script or Markdown target, instead of searching bytes. On macOS with
+      `chat --deep` and a `.md` or `.ps1` target: Claude Code 2.1.322 (`.md`) called triage and
+      `core_text_read` together; Codex 0.162.1 read the `.ps1` with `core_text_read` straight away,
+      and for the `.md` tried `core_overview_show` ("Unknown file magic"), then triage, then
+      `core_text_read`. All three quoted the file exactly; none used a byte or string search
+      — claimed: chordpli, branch test/r3.11-text-read-live-chat
+- [ ] A text file is still "A file we don't recognise yet" everywhere but triage's answer: the
+      target's kind stays `unknown`, so `core_targets_list` and triage's `description` say so, and
+      Codex tried `core_overview_show` on a `.md` before triage. Give text its own target kind (or
+      description) so the list and the app call it text — claimed: Martin-Aziz, branch bugfix/r3.11-text-target-kind
 
 ### R3.12 Format parser correctness
 Owner: open · Status: in progress
+- [x] Read the explicit module-format byte in current Node SEA blobs while retaining the older layouts;
+      report the stored format and recover the main script, assets and execution arguments at their real offsets.
+      — claimed: Afloat16, branch bugfix/r3.12-node-sea-module-format-20261110
+- [x] Keep sequence splitting from introducing JavaScript strict-mode directives.
+      — claimed: Plastic-time, branch rrfz/bugfix-r3.12-js-sequence-directives
+- [x] Allocate distinct recovered module paths after repeated content-hash collisions.
+      — claimed: Plastic-time, branch rrfz/bugfix-r3.12-js-module-collisions
 - [x] Refuse oversized GNU tar long names and link targets instead of silently truncating member identities.
       — claimed: Afloat16, branch bugfix/r3.12-tar-long-identities-20261109
       Source [`de2c6390`](https://github.com/Afloat16/craft-anything/commit/de2c63908909cab675887103921ed2601b1bae9b) passed [formats tests, fmt and clippy](https://github.com/Afloat16/claude-mem/actions/runs/42640688213/job/129240669663)
@@ -1494,6 +1585,9 @@ Owner: open · Status: in progress
       The [unchanged-production baseline](https://github.com/Afloat16/claude-mem/actions/runs/42659466852/job/129306793039) reproduces four failed guards while seven compatibility controls pass.
 - [x] Extract legacy PyInstaller PYZ data as raw files and report modern namespace packages without fabricating bytecode.
       — claimed: Afloat16, branch bugfix/r3.12-pyz-member-kinds
+- [x] Bound retained expanded PYZ paths across nested archives before allocating repeated prefixes;
+      preserve complete entry identities and declared module counts in partial listings.
+      — claimed: Afloat16, branch bugfix/r3.12-pyz-expanded-path-budget-20261110
 - [x] Keep PyInstaller CArchive member reads before the table and cookie, including signed files with trailing bytes.
       — claimed: Afloat16, branch bugfix/r3.12-carchive-payload-range-20261109
       Source [`a5bcfaed`](https://github.com/Afloat16/craft-anything/commit/a5bcfaedcb1ad67c8bb7f06c7143befc8292409c) passed [formats tests, fmt and clippy](https://github.com/Afloat16/claude-mem/actions/runs/42636776430/job/129226891917)
@@ -1501,6 +1595,10 @@ Owner: open · Status: in progress
       The [unchanged-code baseline](https://github.com/Afloat16/claude-mem/actions/runs/42636776430/job/129226895582) reproduces the new regression cases.
 - [x] Bound rejected ASAR names by the archive listing limit.
       — claimed: Afloat16, branch bugfix/r3.12-asar-limit-bounds-20261107
+- [x] Bound retained ASAR entry and rejected-name paths before expanding shared directory prefixes;
+      preserve complete member identities and report a partial listing when the byte budget is reached.
+      Extract recovered members with partial coverage and no claimed total when a listing is incomplete.
+      — claimed: Afloat16, branch bugfix/r3.12-asar-path-budget-20261110
 - [x] Keep embedded Godot pack tables and member reads before the executable's pack trailer.
       — claimed: Afloat16, branch bugfix/r3.12-godot-trailer-boundary-20261109
       Source `9744a0569a7c`; [format checks](https://github.com/Afloat16/claude-mem/actions/runs/42633003467/job/129213811429) and [compatibility gates](https://github.com/Afloat16/claude-mem/actions/runs/42642583301/job/129247271153) passed.
@@ -1526,6 +1624,8 @@ Owner: open · Status: in progress
 - [x] WITHOUT ROWID rows stored before ALTER TABLE ADD COLUMN show the added columns' defaults,
       as rowid tables already do, instead of NULL.
       — claimed: Plastic-time, branch bugfix/r3.12-sqlite-without-rowid-added-columns
+- [x] Discard decoded SQLite rows before the requested offset instead of retaining every preceding row, and keep zero-sized pages bounded while preserving readable-row offsets and key order.
+      — claimed: Afloat16, branch bugfix/r3.12-sqlite-page-retention-20261110
 - [x] Fill added SQLite columns whose DEFAULT is a hex integer or a literal in parentheses
       (`DEFAULT 0x10`, `DEFAULT (5)`); they show NULL with a note today. Hex integers keep
       SQLite's 64-bit two's-complement value; one parenthesized literal is filled, while
@@ -1595,12 +1695,24 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-dns-txt-truncation-20261105
       Preserve empty ANY/NONE UPDATE prerequisites with zero TTL; keep TXT validation scoped to parsed answers/prerequisites.
       Preserve empty multicast/unicast DNS-SD TXT records using wire-label service instance names.
+- [x] Verify ECDSA keys using their declared named curve and reject missing, malformed or unsupported parameters instead of selecting a curve from the point length.
+      — claimed: Afloat16, branch bugfix/r3.12-ec-named-curve-20261110
+- [x] Verify RSASSA-PSS signatures using their declared digest, mask and salt parameters, enforce PSS public-key constraints, and require signed and outer certificate parameters to agree.
+      — claimed: Afloat16, branch bugfix/r3.12-rsa-pss-parameters-20261110
 - [x] Validate DER algorithm identifiers, signature and key bit strings, and name fields before using them as certificate verification inputs.
       — claimed: Afloat16, branch bugfix/r3.12-der-verification-fields
+- [x] Reject certificates whose signed signature-algorithm OID conflicts with the outer algorithm before reporting a verified signature.
+      — claimed: Afloat16, branch bugfix/r3.12-certificate-signature-oids-20261110
 - [x] Distinguish literal punctuation and multi-valued attributes in the displayed X.509 issuer and subject.
       — claimed: Afloat16, branch bugfix/r3.12-certificate-name-rendering
+- [x] Match CMS signer certificates by issuer and serial number or subject key identifier; leave absent matches unknown instead of selecting an unrelated certificate and chain.
+      — claimed: Afloat16, branch bugfix/r3.12-cms-signer-identities-20261110
 - [x] Read HTTP Host fields only from the header section.
       — claimed: Afloat16, branch bugfix/r3.12-http-host-boundary-20261105
+- [x] Select certificate issuers by successful signature verification among matching names, follow self-issued key rollover, and report interrupted chains as incomplete.
+      — claimed: Afloat16, branch bugfix/r3.12-certificate-issuer-selection-20261110
+- [x] Distinguish certificate-chain cycles from the 16-link walk limit when explaining why issuer verification stopped (follow-up to #1518).
+      — claimed: Afloat16, branch bugfix/r3.12-certificate-cycle-note-20261110
 - [x] Keep capture flow timestamps in chronological order.
       — claimed: Afloat16, branch bugfix/r3.12-capture-flow-time-range-20261105
 - [x] Reject incomplete simple packet block payloads.
@@ -1614,6 +1726,8 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-zip-multidisk-20261105
 - [x] Check Unity bundle blocks against their declared output lengths.
       — claimed: Afloat16, branch bugfix/r3.12-unity-bundle-decompressed-length-20261105
+- [x] Read only requested byte ranges from uncompressed Unity bundle blocks so small metadata and asset reads do not allocate or reject entire stored blocks, while preserving size checks and compressed-block caching.
+      — claimed: Afloat16, branch bugfix/r3.12-unity-stored-block-ranges-20261110
 - [x] Apply standalone LZMA output budgets to its internal dictionary and reject oversized declared output before decoding.
       — claimed: Afloat16, branch bugfix/r3.12-standalone-lzma-budget-20261109
       Source [`5da8880d`](https://github.com/Afloat16/craft-anything/commit/5da8880d3b56785498cf0c09ae46f300f070322d) passed [formats tests, fmt and clippy](https://github.com/Afloat16/claude-mem/actions/runs/42636776430/job/129226892150)
@@ -1630,6 +1744,8 @@ Owner: open · Status: in progress
 - [x] Check that Unity bundle compressed blocks end before the trailing block table, or the declared
       bundle end for front-positioned tables, so bytes outside the data region cannot supply block contents.
       — claimed: Codex, branch bugfix/r3.12-unity-bundle-data-region; PR #1021
+- [x] Check Unity bundle member ranges against the complete uncompressed block stream, retain invalid entries as unreadable with explicit listing warnings, and preserve valid sibling members, cross-block ranges and empty entries.
+      — claimed: Afloat16, branch bugfix/r3.12-unity-node-ranges-20261110
 - [x] Validate Unity serialized metadata offsets and lengths before reading so short inputs cannot panic or borrow object bytes.
       — claimed: Afloat16, branch bugfix/r3.12-unity-metadata-range-20261109
       Source `de9d7444f509`; [format checks](https://github.com/Afloat16/claude-mem/actions/runs/42633003467/job/129213811357) and [compatibility gates](https://github.com/Afloat16/claude-mem/actions/runs/42642583301/job/129247271153) passed.
@@ -1649,8 +1765,12 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-iostore-complete-header-20261105
 - [x] Reject CBOR collections that exceed the EVM metadata reader's limits and invalid text strings.
       — claimed: Afloat16, branch bugfix/r3.12-evm-cbor
+- [x] Keep EVM bytecode intact when its CBOR trailer repeats a metadata key or uses a non-text map key.
+      — claimed: Afloat16, branch bugfix/r3.12-evm-cbor-map-keys-20261110
 - [x] Require evidence of a rejecting payment branch before labelling EVM functions nonpayable; reading CALLVALUE alone accepts payments.
       — claimed: Afloat16, branch bugfix/r3.12-evm-payment-guards
+- [x] Avoid rescanning every retained EVM selector for repeated dispatcher comparisons.
+      — claimed: Afloat16, branch bugfix/r3.12-evm-selector-dedup-20261110
 - [x] Reject invalid marshal long integer digits.
       — claimed: Afloat16, branch bugfix/r3.12-pyc-long-limb-validation-20261105
 - [x] Check expanded RGBA image sizes and enforce output budgets before allocation.
@@ -1663,11 +1783,19 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-tensor-zero-dimension-product-20261105
 - [x] Find APK signatures through valid ZIP comments and framed central directories.
       — claimed: Afloat16, branch bugfix/r3.12-apk-sign-eocd-comment-boundary-20261105
+- [x] Require APK signer SDK ranges and ordered signature-algorithm lists to match their signed copies, with complete required signer fields, before reporting verification.
+      — claimed: Afloat16, branch bugfix/r3.12-apk-signed-metadata-20261110
+- [x] Include an Android package's type-ID offset in resource identities while retaining its local type-name indices; reject shifted IDs outside the one-byte type field.
+      — claimed: Afloat16, branch bugfix/r3.12-arsc-type-id-offset-20261110
 - [x] Keep Android resource packages, child chunks and library records inside their enclosing declared ranges.
       — claimed: Afloat16, branch bugfix/r3.12-arsc-parent-chunk-boundaries-20261109
       Source `ea680eeb9e92`; [format checks](https://github.com/Afloat16/claude-mem/actions/runs/42636776430/job/129226895431) and [compatibility gates](https://github.com/Afloat16/claude-mem/actions/runs/42642583301/job/129247271153) passed.
 - [x] Keep explicit script and variant subtags when grouping Android resource strings by locale.
       — claimed: Afloat16, branch bugfix/r3.12-android-script-locale
+- [x] Bound decoded Android string-pool bytes and disclose partial pools in binary XML and resource tables, so shared offsets cannot multiply a small chunk into unbounded retained strings.
+      — claimed: Afloat16, branch bugfix/r3.12-android-pool-retained-bytes-20261110
+- [x] Carry incomplete Android manifest decoding into package and component evidence coverage, including the last component page, without substituting ZIP-entry counts for document completeness.
+      — claimed: Afloat16, branch bugfix/r3.12-android-manifest-coverage-20261110
 - [x] Read 16-bit native pointers without consuming adjacent bytes.
       — claimed: Afloat16, branch bugfix/r3.12-binary-pointer
 - [x] Keep same-named imported functions attached to their own library and preserve an explicitly recorded pointer slot.
@@ -1683,6 +1811,8 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-macho-zerofill-section-data
 - [x] Keep native address translations and reads inside both the mapped range and its file-backed bytes.
       — claimed: Afloat16, branch bugfix/r3.12-binary-padding
+- [x] List each Objective-C class and category address once when ordinary and non-lazy registration tables overlap, keeping distinct same-named definitions separate.
+      — claimed: Afloat16, branch bugfix/r3.12-objc-nonlazy-identity-20261111
 - [x] Require complete Objective-C method record strides before reading absolute or relative method fields.
       — claimed: Afloat16, branch bugfix/r3.12-objc-method-record-stride-20261109
 - [x] Keep Mach-O function starts within their declared payload.
@@ -1702,38 +1832,70 @@ Owner: open · Status: in progress
       existential of a protocol named this way was reported invalid ("expected a type"):
       `_$sSS6encode2toys7Encoder_p_tKF` is `Swift.String.encode(to: Swift.Encoder) throws -> ()`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-existentials
+- [x] Swift function type attributes decode. Besides `Ya` (async), a function type can carry `Yb`
+      (`@Sendable`), `Yc` (a global actor, with its type), `YA` (`@isolated(any)`) and `YK` (the
+      error type of `throws(E)`), but the demangler read only `Ya` and reported the rest invalid
+      ("unsupported function attribute"): `_$s1x2v1yyYbcvp` is `x.v1 : @Sendable () -> ()`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-function-attributes
 - [x] Swift value witness symbols decode. A symbol ending `w` and two letters is one of the
       functions the runtime calls to copy, move, destroy or read the enum tag of a value of a
       type, but the demangler had no `w` operator and reported it invalid ("unsupported operator
       'w'"): `_$ss6ResultOwug` is `getEnumTag value witness for Swift.Result`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-value-witnesses
+- [x] Swift lazy witness table cache variables decode. A symbol ending `WL` names a type and
+      the conformance it is used with, as `Wl` does, but the demangler read only one operand and
+      reported it invalid ("N nodes left after decoding"):
+      `_$s7SwiftUI4EdgeO3SetVAESQAAWL` is `lazy protocol witness table cache variable for type
+      SwiftUI.Edge.Set and conformance SwiftUI.Edge.Set : Swift.Equatable in SwiftUI`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-witness-cache
 - [x] Swift enum case symbols decode. A symbol ending `WC` is the function that builds an enum
       case, but the demangler read `WC` as an unknown witness kind and reported it invalid
       ("unsupported witness kind"): `_$s10FindMyBase3BitO3oneyA2CmFWC` is
       `enum case for FindMyBase.Bit.one(FindMyBase.Bit.Type) -> FindMyBase.Bit`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-enum-cases
+- [x] Swift symbols decode opaque result types. A function, variable or subscript declared to
+      return `some P` mangles that result as `Qr` (`QR` for a second or later one in a tuple),
+      and a use of it elsewhere as `QO` and `Qo`, but the demangler reported all of them invalid
+      ("unsupported associated type"): `_$s1a2mkQryF` is `a.mk() -> some`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-opaque-types
 - [x] Swift symbols decode private declarations. A private or `fileprivate` declaration's name
       is followed by an identifier for its file and `LL`, and the demangler reported every such
       symbol invalid ("unsupported operator 'L'"):
       `_$s10DVTIconKit12_isDebugging33_8F51EEEBC836B21F9ED44F4C6D38A8CBLLSbvp` is
       `DVTIconKit.(_isDebugging in _8F51EEEBC836B21F9ED44F4C6D38A8CB) : Swift.Bool`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-private-names
+- [x] Swift symbols decode outlined value operations. The demangler reported every `WO` and a letter
+      (`WOh`, `WOc`, `WOi0_`) as "unsupported witness kind", so `_$s10ACPToolLib11ResetSchemaVWOh`
+      should read "outlined destroy of ACPToolLib.ResetSchema", as `swift-demangle` prints it.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-outlined-ops
 - [x] Swift symbols name the right type after an optional, an associated type or an extension.
       The demangler's substitution list left out `Sg` optionals and `Qz`/`Qy` associated types
       and added extensions, so a later `A…` reference named the wrong node
       (`[Swift.String : Swift.String]` where the symbol says `Swift.String?`) or fell out of range.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-substitutions
+- [x] Charge saved Swift substitution trees and repeated copies against the expansion budget before cloning.
+      — claimed: Afloat16, branch bugfix/r3.12-swift-substitution-copy-budget-20261110
 - [x] Swift symbols read `SQ` as `Swift.Equatable`. The demangler's table of standard types mapped
       it to the enum `Swift.ImplicitlyUnwrappedOptional`, so `_$sSQMp` read "protocol descriptor for
       Swift.ImplicitlyUnwrappedOptional", a requirement read `A: Swift.ImplicitlyUnwrappedOptional`,
       and `Equatable` conformance descriptors and witness tables (`…SQAAMc`, `…SQsWP`) were
       reported invalid ("expected a protocol").
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-equatable
+- [x] Swift symbols spell the concurrency types as `Sc` and a letter. The demangler reported all of
+      them invalid ("concurrency standard types are not supported"), so `_$sScAMp` should read
+      "protocol descriptor for Swift.Actor" and `ScT`, `ScG`, `ScS` and the rest their own types,
+      with an unknown letter after `Sc` still invalid.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-concurrency-types
 - [x] Swift symbols name the type metadata singleton initialization cache. The demangler read
       `Ml` with the name of `ML`, so `_$s10RealityKit30__RKEntityTriggerSpecificationOMl` read
       "lazy cache variable for type metadata for RealityKit.__RKEntityTriggerSpecification" where
       `swift-demangle` prints `type metadata singleton initialization cache for …`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-singleton-cache
+- [x] Swift one-time initialization symbols name the variable. `WZ` and `Wz` were invalid; they now
+      read "one-time initialization function for" and "one-time initialization token for" followed
+      by the variable's name, as `swift-demangle` prints them. For example
+      `_$s10ACPToolLib11RemoveTokenV13configuration_WZ` reads "one-time initialization function for configuration".
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-once-init
 - [x] Require a complete Cargo package version before a registry or vendor path becomes Rust dependency evidence.
       — claimed: Afloat16, branch bugfix/r3.12-rust-dependency-versions
 - [x] Swift symbols name the right generic parameter in an associated type. `Qy` numbers its
@@ -1741,6 +1903,12 @@ Owner: open · Status: in progress
       demangler read `Qy_` as `A`, so `Swift.Zip2Sequence.Iterator.next()` returned
       `(A.Element, A.Element)?` where the symbol says `(A.Element, B.Element)?`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-associated-type-index
+- [x] Swift metadata symbols name their kind the way `swift-demangle` does. `MN` reads as
+      noncanonical specialized generic type metadata (`_$sSRys6UInt16VGMN`), `Mj` as an opaque
+      type descriptor accessor key and `Mz` as a flag for loading canonical specialized generic
+      type metadata. The demangler printed `type metadata for`, `module descriptor` and `type
+      metadata heap reference for` for them.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-metadata-names
 - [x] Decode binary plist markers and dictionary keys according to their stored types.
       — claimed: Afloat16, branch bugfix/r3.12-bplist-typed-objects
 - [x] Swift initialisers of structs, enums, protocols and extensions read `init`. The demangler
@@ -1749,12 +1917,23 @@ Owner: open · Status: in progress
       `Swift.Double.__allocating_init(Swift.Double) -> Swift.Double` for
       `Swift.Double.init(Swift.Double) -> Swift.Double`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-init-names
+- [x] Swift operator functions decode. A function named by an operator is written as the
+      operator's letters and `oi` (infix), `op` (prefix) or `oP` (postfix), and the demangler
+      reported every one invalid (`unsupported operator 'o'`), so `_$s10Foundation4DateV2eeoiySbAC_ACtFZ`
+      now reads `static Foundation.Date.== infix(Foundation.Date, Foundation.Date) -> Swift.Bool`.
+      Private operators, and the witnesses, thunks and descriptors around an operator function, decode too.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-operator-names
 - [x] Swift arguments without a label read `_:` when another argument of the same function,
       initialiser or subscript has one. The demangler printed the bare type, so
       `_$s10Foundation13__DataStorageC6append_6lengthySV_SitF` read
       `Foundation.__DataStorage.append(Swift.UnsafeRawPointer, length: Swift.Int) -> ()` where
       `swift-demangle` prints `append(_: Swift.UnsafeRawPointer, length: Swift.Int) -> ()`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-unlabeled-args
+- [x] Swift witness table accessors decode. The demangler read `Wl`, `Wb`, `WT` and `WI` as unknown
+      witness kinds and reported them invalid ("unsupported witness kind"):
+      `_$s7SwiftUI4EdgeO3SetVAESQAAWl` is `lazy protocol witness table accessor for type
+      SwiftUI.Edge.Set and conformance SwiftUI.Edge.Set : Swift.Equatable in SwiftUI`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-witness-accessors
 - [x] Apply the extracted-string limit in file-offset order across UTF-16LE and narrow strings, so an early wide string is not hidden by later ASCII.
       — claimed: Afloat16, branch bugfix/r3.12-earliest-extracted-strings
 - [x] Visit XML plist values only inside a complete, correctly encoded document.
@@ -1768,6 +1947,8 @@ Owner: open · Status: in progress
       — claimed: Chr0mium24, branch bugfix/r3.12-codesign-flag-names
 - [x] Keep code-signature children and verification reads within their declared superblob.
       — claimed: Afloat16, branch bugfix/r3.12-codesign-superblob-length-boundary-20261105
+- [x] Require complete, single-valued CMS message-digest and content-type signed attributes with the specified tags, and bind the content type to the encapsulated content before reporting authentication.
+      — claimed: Afloat16, branch bugfix/r3.12-cms-signed-attributes-20261110
 - [x] Reject out-of-range or unterminated library names in the ELF dynamic string table.
       — claimed: Afloat16, branch bugfix/r3.12-elf-dynamic-names
 - [x] Recover dynamic symbols through PT_DYNAMIC when an ELF retains other section headers but has no usable dynamic-symbol section.
@@ -1791,6 +1972,8 @@ Owner: open · Status: in progress
 - [x] Keep PE version strings whose value is empty (stored with no value at all), such as
       `OleSelfRegister`, whose presence is the whole point.
       — claimed: Plastic-time, branch bugfix/r3.12-pe-empty-version-strings
+- [x] Keep fixed PE file and product versions inside a complete declared VS_FIXEDFILEINFO value and its enclosing version node.
+      — claimed: Afloat16, branch bugfix/r3.12-pe-fixed-version-bounds-20261110
 - [x] Read PE version strings stored as binary (wType 0), which some linkers write; they're
       dropped today (`FileDescription` in `pthreadVC2.dll`). A binary leaf at the string depth is
       decoded as UTF-16LE; a binary node with children stays a container.
@@ -1799,7 +1982,11 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-source-map-data-url-fragment
 - [x] Apply WebAssembly name and producer inventory limits across repeated custom sections and report truncation.
       — claimed: Afloat16, branch bugfix/r3.12-wasm-custom-inventory-budget-20261109
+- [x] Bound bytes retained when WebAssembly types and function names are expanded through references, reuse formatted type signatures, and disclose omitted derived metadata.
+      — claimed: Afloat16, branch bugfix/r3.12-wasm-reference-bytes-20261110
       Source `232100030ace`; [format checks](https://github.com/Afloat16/claude-mem/actions/runs/42642340046/job/129246412808) and [compatibility gates](https://github.com/Afloat16/claude-mem/actions/runs/42642340046/job/129246412808) passed.
+- [x] Report WebAssembly metadata truncation accurately in summary and complete tool views, including byte-budget exhaustion before entry limits (follow-up to #1540).
+      — claimed: Afloat16, branch bugfix/r3.12-wasm-metadata-limits-20261110
 - [x] Accept only valid WebAssembly names when reporting custom-section debug and source map URLs.
       — claimed: Afloat16, branch bugfix/r3.12-wasm-debug-names
 - [x] Decode the full signed 32-bit source map VLQ range and refuse mapping fields outside it.
@@ -1808,12 +1995,24 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-go-generic-owner
 - [x] Keep Go function tables and names within their section.
       — claimed: Afloat16, branch bugfix/r3.12-go-pclntab-section-boundary-20261105
+- [x] Preserve complete Go functions before a damaged later table entry and report partial coverage when the scan stops at structural damage or its unreadable-name limit.
+      — claimed: Afloat16, branch bugfix/r3.12-go-pclntab-prefix-20261110
+- [x] Bound retained Go function-name bytes when pclntab records share name references, preserving recovered functions and explicitly disclosing omitted names.
+      — claimed: Afloat16, branch bugfix/r3.12-go-name-bytes-20261110
 - [x] Keep the report's function display limit from marking a valid large WebAssembly module as mismatched.
       — claimed: Afloat16, branch bugfix/r3.12-wasm-function-count
+- [x] Reject TypeSpec handles where CLI class/value-type and generic signatures require TypeDef or TypeRef, while retaining standalone TypeSpec and custom-modifier decoding.
+      — claimed: Afloat16, branch bugfix/r3.12-dotnet-signature-type-handles-20261110
+- [x] Recognize volatile type notation from required `System.Runtime.CompilerServices.IsVolatile` modifiers across the complete modifier list.
+      — claimed: Afloat16, branch bugfix/r3.12-dotnet-volatile-modifiers-20261110
 - [x] Preserve complete Unicode characters in shortened .NET strings.
       — claimed: Afloat16, branch bugfix/r3.12-dotnet-user-string-surrogate-limit-20261105
+- [x] Validate CIL method exception-section kinds, extents and complete clause records before reading exception handlers.
+      — claimed: Afloat16, branch bugfix/r3.12-cil-exception-framing-20261110
 - [x] Read Dart version hashes and feature strings only from the bytes belonging to that snapshot.
       — claimed: Afloat16, branch bugfix/r3.12-dart-snapshot-extent
+- [x] Keep Dart string-pool duplicate tracking within the retained URI and token limits.
+      — claimed: Afloat16, branch bugfix/r3.12-dart-retained-string-budgets-20261110
 - [x] Read a Dart ELF build ID only when its name and descriptor fit the declared note.
       — claimed: Afloat16, branch bugfix/r3.12-dart-note
 - [x] Locate ELF core mapping names after the complete declared table.
@@ -1824,12 +2023,16 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-index-map-boundaries
 - [x] Preserve the URL delimiter in source-map roots when resolving a relative source file.
       — claimed: Afloat16, branch bugfix/r3.12-source-map-url-root
+- [x] Keep source map annotation URL suffixes intact.
+      — claimed: Plastic-time, branch rrfz/bugfix-r3.12-annotation-20261110
 - [x] Keep DOS relocations inside the declared executable header.
       — claimed: Afloat16, branch bugfix/r3.12-dos-relocation-header-boundary-20261105
 - [x] Keep relocation reads within their declared entry stride and never invent an addend for a truncated RELA.
       — claimed: Afloat16, branch bugfix/r3.12-sbpf-rela
 - [x] Use the sorted section and segment boundaries during source-map position lookups so repeated symbolication visits only matching positions.
       — claimed: Afloat16, branch bugfix/r3.12-source-map-lookup-work
+- [x] Bound generated source-map lines across indexed sections, including empty lines that consume no segment budget.
+      — claimed: Afloat16, branch bugfix/r3.12-sourcemap-line-budget-20261110
 - [x] Parsers refuse what they used to half-read: binary plists keep objects inside their object
       area and reject unrepresentable widths, base64 (plists, source maps) refuses damaged tails
       and incomplete quanta through one shared decoder, OIDs must be minimally encoded, and string
@@ -1839,8 +2042,16 @@ Owner: open · Status: in progress
       (#606–#615, by Afloat16)
 - [x] Report truncated SquashFS metadata blocks and retain previously recovered blocks.
       — claimed: Afloat16, branch bugfix/r3.12-squashfs-metadata-warning
+- [x] Recover zero-filled cramfs hole blocks at full and partial page boundaries while retaining the existing recovery budgets.
+      — claimed: Afloat16, branch bugfix/r3.12-cramfs-hole-blocks-20261110
 - [x] Bound filesystem and archive recovery by the recorded image, node, directory and member limits.
       — claimed: Afloat16, branch bugfix/r3.12-filesystem-archive-bounds
+- [x] Recover files and symlinks from cramfs blocks marked uncompressed while preserving mixed compressed runs and recovery limits.
+      — claimed: Afloat16, branch bugfix/r3.12-cramfs-uncompressed-blocks-20261110
+- [x] Use ordered visited-node membership in ROMFS, ext, SquashFS and JFFS2 directory walks so wide filesystem trees avoid repeated scans of every previously visited node.
+      — claimed: Afloat16, branch bugfix/r3.12-filesystem-page-visits-20261110
+- [x] Read big-endian cramfs inode fields and block pointers so files and links recover like little-endian images.
+      — claimed: Afloat16, branch bugfix/r3.12-cramfs-big-endian-20261110
 - [x] Verify gzip FHCRC and accept informational XFL and OS bytes without inventing reserved-value restrictions.
       — claimed: Afloat16, branch bugfix/r3.12-gzip-header-crc-20261109
       Source [`dde4aa02`](https://github.com/Afloat16/craft-anything/commit/dde4aa0233be968f9b55bd3316204b880b8dbf2e) passed [formats tests, fmt and clippy](https://github.com/Afloat16/claude-mem/actions/runs/42636776430/job/129226891865)
@@ -1848,6 +2059,7 @@ Owner: open · Status: in progress
       The [unchanged-code baseline](https://github.com/Afloat16/claude-mem/actions/runs/42636776430/job/129226895582) reproduces the new regression cases.
 - [x] Exercise signed PAX lengths, empty keys and equals signs inside a path value.
       — claimed: Afloat16, branch bugfix/r3.12-pax-record-framing
+- [x] Apply global PAX archive attributes to later members, honor local overrides and global deletions, and bound inherited name copies before extraction.
 - [x] Bound and cancel CRC cpio verification across firmware probes, and reject non-hex checksum
       fields — claimed: Afloat16, branch bugfix/r3.12-bound-cpio-crc-scans-20261103
 - [x] More parsers keep to the bytes they declare and refuse impossible values: signed LEB128 past
@@ -1864,6 +2076,8 @@ Owner: open · Status: in progress
       rowid alias and WITHOUT ROWID order: the column list opens at the first parenthesis outside
       quotes.
       — claimed: Plastic-time, branch bugfix/r3.12-sqlite-parenthesized-table-names
+- [x] Use ordered page membership for SQLite row and count walks so a wide b-tree does not repeatedly scan every previously visited page.
+      — claimed: Afloat16, branch bugfix/r3.12-sqlite-page-visits-20261110
 - [x] A comment after a SQLite column list that holds `)` (`... WITHOUT ROWID /* ) */`) still hides
       the WITHOUT ROWID marker: find the list's closing parenthesis by tokens, not `rfind(')')`.
       — claimed: Chr0mium24, branch bugfix/r3.12-sqlite-options-after-comment
@@ -1873,8 +2087,18 @@ Owner: open · Status: in progress
 - [x] Reject Java Long and Double constants without their reserved constant-pool slot, including the maximum u16 pool boundary.
       — claimed: Afloat16, branch bugfix/r3.12-java-wide-pool-slot-20261109
       Source `e0dbc3a5b60b`; [full Linux gate](https://github.com/Afloat16/craft-anything/actions/runs/42629757277) passed.
+- [x] Borrow Java attribute names from the constant pool so repeated references cannot multiply temporary parser memory.
+      — claimed: Afloat16, branch bugfix/r3.12-java-attribute-name-borrowing-20261110
+- [x] Unfold JAR manifest attributes as bytes before UTF-8 decoding, preserve value whitespace, and recognize every specified line ending so entry digests use the original filenames.
+      — claimed: Afloat16, branch bugfix/r3.12-jar-attribute-bytes-20261110
+- [x] Merge digest attributes across repeated JAR manifest sections for the same entry, honoring later attribute values while retaining absent earlier values and checking each file once.
+      — claimed: Afloat16, branch bugfix/r3.12-jar-repeated-entry-sections-20261110
 - [x] Find the method parameter terminator outside object type names in JVM descriptors.
       — claimed: Afloat16, branch bugfix/r3.12-java-descriptor-boundary
+- [x] Validate complete JVM switch payloads before reserving pairs, and reject duplicate or descending lookup keys instead of emitting invalid control-flow facts.
+      — claimed: Afloat16, branch bugfix/r3.12-java-switch-tables-20261110
+- [x] Bound aggregate DEX payload copies while attaching shared switch and array data to decoded instructions.
+      — claimed: Afloat16, branch bugfix/r3.12-dex-payload-memory-20261110
 - [x] Stop capped DEX member and handler lists from interpreting unread records as the following field or a catch-all.
       — claimed: Afloat16, branch bugfix/r3.12-dex-capped-table-alignment-20261109
       Source `149f060b9959`; [format checks](https://github.com/Afloat16/claude-mem/actions/runs/42633003467/job/129213811327) and [compatibility gates](https://github.com/Afloat16/claude-mem/actions/runs/42642583301/job/129247271153) passed.
@@ -1894,9 +2118,13 @@ Owner: open · Status: in progress
       — claimed: Afloat16, branch bugfix/r3.12-dns-record-evidence
 - [x] Resolve keyed archive references consistently in nested objects and object rows.
       — claimed: Afloat16, branch bugfix/r3.12-keyed-archive-references
+- [x] Reject NIB variable-length integers whose tenth byte exceeds the unsigned 64-bit range, instead of letting truncated high bits become an unrelated length or index.
+      — claimed: Afloat16, branch bugfix/r3.12-nib-integer-overflow-20261110
 - [x] Accept binary plist arrays and sets that name one stored value many times; repeated data and
       text spend a byte budget, and containers past the node cap are refused before reserving space.
       — claimed: Plastic-time, branch bugfix/r3.12-plist-shared-array-values
+- [x] Bound NIB object copies by their retained data, key and class bytes so shared value ranges cannot amplify a small archive beyond the byte budget.
+      — claimed: Afloat16, branch bugfix/r3.12-nib-retained-bytes-20261110
 - [x] SQLite column names read whole when quoted: a doubled quote inside one stands for a quote,
       and single-quoted names (which SQLite accepts) lose their quotes. Keys that name such columns
       find them, so rowid aliases and WITHOUT ROWID order hold.
@@ -1939,21 +2167,52 @@ Owner: open · Status: in progress
       prints `(() -> Swift.Int)?`. An optional protocol composition read `main.P & main.Q?` for
       `(main.P & main.Q)?`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-optional-functions
+- [x] Swift special types decode. A type written with `X` and a kind letter (a non-escaping
+      closure `XE`, an `AnyObject` or class-and-protocol existential, a protocol metatype, a
+      `@convention` or `@autoclosure` function, `Self`, a `weak` or `unowned` type) was reported
+      invalid ("unsupported special type"): `_$s13IDEConsoleKit0A5ThemeC22infoTypeThumbnailImageSo7NSImageCvgAFyXEfU_`
+      is `closure #1 () -> __C.NSImage in IDEConsoleKit.IDEConsoleTheme.infoTypeThumbnailImage.getter : __C.NSImage`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-special-types
 - [x] Python 3.5.0, 3.5.1 and 3.5.2 wrote magic number 3350 into their `.pyc` files, and 3.5.3
       moved to 3351. A file with 3350 is reported as a 3.5 pre-release (`is_release: false`), with
       a note that its code layout may differ. Count 3350 and 3351 as releases of 3.5.
       — claimed: Chr0mium24, branch bugfix/r3.12-pyc-3-5-release-magic
+- [x] Wrap extracted PYZ code with the header length required by its Python magic number;
+      preserve the marshal payload and apply the same version-specific size to extraction limits.
+      — claimed: Afloat16, branch bugfix/r3.12-pyz-version-headers-20261110
 - [x] Swift addressors decode. After `a` (mutable) or `l`, an addressor has a letter for its kind
       (`u` for unsafe), but the demangler read only the `a` and took the kind letter for another
       operator, so every addressor was reported invalid: `_$s5Books19PAGETURNLOG_ENABLEDSbvau` is
       `Books.PAGETURNLOG_ENABLED.unsafeMutableAddressor : Swift.Bool`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-addressors
+- [x] Swift outlined variables decode. `Tv` with an optional index names the outlined variable of the
+      symbol before it (a function, a protocol witness, or a global), but the demangler reported every
+      one as an unsupported thunk, so `_$s013CompilerSwiftA21PluginMessageHandling0C7FeatureO8rawValueACSgSS_tcfCTv_`
+      is `outlined variable #0 of CompilerSwiftCompilerPluginMessageHandling.PluginFeature.init(rawValue: Swift.String) -> CompilerSwiftCompilerPluginMessageHandling.PluginFeature?`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-outlined-variable
+- [x] Swift async thunks decode. `Tu` is the async function pointer of the function before it, and
+      `TY` and `TQ` with an index are its suspend and await resume functions, but the demangler
+      reported all three as an unsupported thunk, so `_$s10XCTestCore5QueueC11synchronizeyyYaFTY0_`
+      is `(1) suspend resume partial function for XCTestCore.Queue.synchronize() async -> ()`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-thunks
 - [x] Swift subscript accessors print the accessor after `subscript` and the type after a colon,
       as `swift-demangle` does. The demangler put the accessor last, so
       `_$s10Foundation4DataV06InlineB0Vys5UInt8VSiciM` read
       `Foundation.Data.InlineData.subscript(Swift.Int) -> Swift.UInt8.modify` where `swift-demangle`
       prints `Foundation.Data.InlineData.subscript.modify : (Swift.Int) -> Swift.UInt8`.
       — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-subscript-accessors
+- [x] Swift key path accessors decode. The getter and setter of a key path (`TK` and `Tk`) after a
+      property descriptor and the type the path starts from were reported as an unsupported thunk, so
+      `_$s10DVTIconKit18GeneratedIconImageC14drawingContextAA0cd7DrawingG0CSgvpACTk` is
+      `key path setter for DVTIconKit.GeneratedIconImage.drawingContext : DVTIconKit.GeneratedIconDrawingContext? : DVTIconKit.GeneratedIconImage`
+      in `swift-demangle`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-keypath-thunks
+- [x] Swift reflection, metadata-cache and Objective-C class symbols decode. The demangler stopped
+      at `M` followed by `K`, `D`, `F`, `A`, `P`, `B`, `U`, `t` or `s` and reported the symbol
+      invalid ("unsupported metadata kind"); about 206,000 symbols in macOS 15.7 and Xcode 26 system
+      binaries were affected. `_$s7Testing3TagVSeAAMcMK` is `metadata instantiation cache for
+      protocol conformance descriptor for Testing.Tag : Swift.Decodable in Testing`.
+      — claimed: Chr0mium24, branch bugfix/r3.12-swift-demangle-metadata-kinds
 - [x] Name the glyph weight (26) and glyph size (27) key attributes of asset catalogs, which hold
       SF Symbol style images; they're listed as `attribute-26` and `attribute-27` today.
       — claimed: Chr0mium24, branch bugfix/r3.12-car-glyph-attributes
@@ -1963,8 +2222,18 @@ Owner: open · Status: in progress
       and [layers, locks, secret scanning, wasm checks and Cargo.lock stability](https://github.com/Afloat16/claude-mem/actions/runs/42640688213/job/129240669663).
       The [unchanged-code baseline](https://github.com/Afloat16/claude-mem/actions/runs/42636776430/job/129226895582) reproduces the new regression cases.
 
+- [x] Calculate GGUF quantized tensor byte ranges from their block layout and diagnose invalid row widths.
+      — claimed: Afloat16, branch bugfix/r3.12-gguf-quantized-extents-20261110
+
+- [x] Require complete sBPF symbol records and their declared string-table links before reporting symbol identities.
+      — claimed: Afloat16, branch bugfix/r3.12-sbpf-symbol-framing-20261110
+- [x] Bound retained PE import/export name and forwarder bytes across repeated references; preserve bounded prefixes and report byte-budget truncation.
+
+
 ### R3.13 Web inspection correctness
 Owner: open · Status: in progress
+- [x] Decode character references in HTML page titles before returning their displayed text.
+      — claimed: Plastic-time, branch rrfz/bugfix-r3.13-html-title-entities
 - [x] Report received HAR response body sizes separately from decoded content sizes and identify entries whose sizes are unknown.
       — claimed: Afloat16, branch bugfix/r3.13-har-transfer-size
 - [x] Read HAR captures with the permitted UTF-8 byte order mark.
