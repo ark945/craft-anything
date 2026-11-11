@@ -164,6 +164,8 @@ pub struct SourceMapRef {
     #[serde(default)]
     pub sources: Vec<String>,
     #[serde(default)]
+    pub sources_truncated: bool,
+    #[serde(default)]
     pub sources_with_content: usize,
 }
 
@@ -510,23 +512,36 @@ pub fn analyze_application(input: &AppInput, opts: &AppOptions, cancelled: &dyn 
         || g.package.as_ref().is_some_and(|p| !p.get("electron_dependency").unwrap_or(&Value::Null).is_null());
     let pages: Vec<String> = if has_electron { Vec::new() } else { analysed.iter().filter(|a| a.html.is_some()).map(|a| a.path.clone()).collect() };
 
+    let starts_worker = |kind: &str| matches!(kind, "worker" | "service-worker" | "utility-process");
     let assign = |roots: &[String], role: &str, roles: &mut HashMap<String, String>| {
-        let mut q: VecDeque<String> = roots.iter().cloned().collect();
-        let mut seen = 0usize;
-        while let Some(p) = q.pop_front() {
-            seen += 1;
-            if seen > 100_000 || roles.contains_key(&p) {
-                continue;
+        let mut q = VecDeque::new();
+        let mut remaining = 100_000usize;
+        let mut enqueue = |p: &str, q: &mut VecDeque<String>, roles: &mut HashMap<String, String>| {
+            if remaining == 0 || roles.contains_key(p) {
+                return;
             }
-            roles.insert(p.clone(), role.to_string());
+            remaining -= 1;
+            // Mark discovered modules before enqueueing: repeated imports must not
+            // consume the traversal budget or grow the queue with duplicate paths.
+            roles.insert(p.to_string(), role.to_string());
+            q.push_back(p.to_string());
+        };
+        for p in roots {
+            enqueue(p, &mut q, roles);
+        }
+        while let Some(p) = q.pop_front() {
             for imp in resolved_imports.get(&p).into_iter().flatten() {
+                // Spawn edges connect execution contexts; ordinary imports share a role.
+                if starts_worker(&imp.kind) {
+                    continue;
+                }
                 if let Some(r) = &imp.resolved {
-                    q.push_back(r.clone());
+                    enqueue(r, &mut q, roles);
                 }
             }
             // Inline scripts of a page share its role.
             for a in analysed.iter().filter(|a| a.host.as_deref() == Some(p.as_str())) {
-                q.push_back(a.path.clone());
+                enqueue(&a.path, &mut q, roles);
             }
         }
     };
@@ -539,7 +554,7 @@ pub fn analyze_application(input: &AppInput, opts: &AppOptions, cancelled: &dyn 
     let mut workers = Vec::new();
     for a in &analysed {
         for imp in resolved_imports.get(&a.path).into_iter().flatten() {
-            if matches!(imp.kind.as_str(), "worker" | "service-worker" | "utility-process")
+            if starts_worker(&imp.kind)
                 && let Some(r) = &imp.resolved
             {
                 workers.push(r.clone());
@@ -923,6 +938,7 @@ pub fn analyze_application(input: &AppInput, opts: &AppOptions, cancelled: &dyn 
     }
 
     // Source maps.
+    let mut source_budget = craft_anything_formats::sourcemap::InventoryLimits::default();
     for a in &analysed {
         let Some(url) = &a.facts.source_map_url else { continue };
         let mut r = SourceMapRef { script: a.path.clone(), url: url.chars().take(256).collect(), ..Default::default() };
@@ -936,8 +952,33 @@ pub fn analyze_application(input: &AppInput, opts: &AppOptions, cancelled: &dyn 
         };
         if let Some(bytes) = map_bytes {
             r.present = true;
-            if let Ok(map) = craft_anything_formats::sourcemap::parse(&bytes, craft_anything_formats::sourcemap::Limits::default()) {
-                r.sources = map.all_sources().into_iter().take(5000).collect();
+            let parsed = craft_anything_formats::sourcemap::parse(&bytes, craft_anything_formats::sourcemap::Limits::default());
+            // A map refused at one of the parser's limits is incomplete, not empty: its sources
+            // are uncertain, never confirmed missing.
+            if let Err(e) = &parsed
+                && is_limit(e)
+            {
+                r.sources_truncated = true;
+                g.limitations.push((
+                    "source_map_inventory_truncated".into(),
+                    format!("The source map for {} was not read within the source-map limits ({e}), so its sources are not listed.", a.path),
+                ));
+            }
+            if let Ok(map) = parsed {
+                let inventory = map.source_inventory(craft_anything_formats::sourcemap::InventoryLimits {
+                    max_sources: source_budget.max_sources.min(5000),
+                    max_bytes: source_budget.max_bytes,
+                });
+                source_budget.max_sources = source_budget.max_sources.saturating_sub(inventory.sources.len());
+                source_budget.max_bytes = inventory.sources.iter().fold(source_budget.max_bytes, |left, source| left.saturating_sub(source.len()));
+                r.sources = inventory.sources;
+                r.sources_truncated = inventory.truncated;
+                if r.sources_truncated {
+                    g.limitations.push((
+                        "source_map_inventory_truncated".into(),
+                        format!("Some source paths for {} could not be retained within the source-map inventory limits.", a.path),
+                    ));
+                }
                 r.sources_with_content = map.sources_content.iter().filter(|c| c.is_some()).count();
             }
             if let Some(res) = &r.resolved {
@@ -1097,6 +1138,12 @@ pub(crate) mod tests_support {
     pub fn notes_graph() -> AppGraph {
         graph_of(fx::notes_app_files())
     }
+}
+
+/// A refusal at one of the source-map parser's limits, as opposed to a map that is malformed.
+fn is_limit(e: &craft_anything_formats::sourcemap::SourceMapError) -> bool {
+    use craft_anything_formats::sourcemap::SourceMapError as E;
+    matches!(e, E::TooLarge(..) | E::TooManySegments(_) | E::TooManyLines(_) | E::LineAllocationFailed | E::TooDeep(_) | E::TooManyEntries(_))
 }
 
 #[cfg(test)]

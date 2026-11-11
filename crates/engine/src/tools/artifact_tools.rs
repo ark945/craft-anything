@@ -73,15 +73,7 @@ pub(crate) fn abs_path(p: &str, what: &str) -> Result<PathBuf, ToolError> {
 
 /// Read a whole file, refusing ones larger than `max`.
 pub(crate) fn read_capped(path: &Path, max: u64) -> Result<Vec<u8>, ToolError> {
-    let meta = std::fs::metadata(path).map_err(|e| ToolError::io(path.display(), e))?;
-    if !meta.is_file() {
-        return Err(ToolError::invalid(format!("{} is not a regular file", path.display())));
-    }
-    if meta.len() > max {
-        return Err(ToolError::new(ErrorCode::OverLimit, format!("{} is {} bytes; the limit is {max}", path.display(), meta.len()))
-            .with_remediation("Raise the size limit parameter if you really want to read it."));
-    }
-    std::fs::read(path).map_err(|e| ToolError::io(path.display(), e))
+    craft_anything_platform::fs::read_file_capped(path, max)
 }
 
 /// One file found by [`walk_dir`].

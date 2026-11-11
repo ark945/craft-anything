@@ -756,11 +756,22 @@ fn decode_a64(bytes: &[u8], addr: u64, fmt: bool) -> Option<Insn> {
         Opcode::MOVZ | Opcode::MOVN | Opcode::MOVK => Kind::Mov,
         Opcode::MADD | Opcode::MSUB | Opcode::SMULL | Opcode::UMULL => Kind::Mul,
         Opcode::SDIV | Opcode::UDIV => Kind::Div,
-        Opcode::LDP | Opcode::LDPSW => Kind::LoadPair,
+        Opcode::LDAXR | Opcode::LDAXRB | Opcode::LDAXRH => Kind::Load,
+        Opcode::LDP | Opcode::LDPSW | Opcode::LDXP | Opcode::LDAXP => Kind::LoadPair,
         Opcode::STP => Kind::StorePair,
-        Opcode::B | Opcode::Bcc(_) | Opcode::CBZ | Opcode::CBNZ | Opcode::TBZ | Opcode::TBNZ | Opcode::BR => Kind::Branch,
-        Opcode::BL | Opcode::BLR => Kind::Call,
-        Opcode::RET => Kind::Ret,
+        Opcode::B
+        | Opcode::Bcc(_)
+        | Opcode::CBZ
+        | Opcode::CBNZ
+        | Opcode::TBZ
+        | Opcode::TBNZ
+        | Opcode::BR
+        | Opcode::BRAA
+        | Opcode::BRAAZ
+        | Opcode::BRAB
+        | Opcode::BRABZ => Kind::Branch,
+        Opcode::BL | Opcode::BLR | Opcode::BLRAA | Opcode::BLRAAZ | Opcode::BLRAB | Opcode::BLRABZ => Kind::Call,
+        Opcode::RET | Opcode::RETAA | Opcode::RETAB => Kind::Ret,
         Opcode::HINT => Kind::Nop,
         _ => {
             if op_name.starts_with("LDR") || op_name.starts_with("LDUR") || op_name.starts_with("LDAR") || op_name.starts_with("LDX") {
@@ -778,10 +789,27 @@ fn decode_a64(bytes: &[u8], addr: u64, fmt: bool) -> Option<Insn> {
     {
         refs.push(t);
     }
-    // Reads/writes: stores and branches read everything; otherwise the first register is the
-    // destination and the rest are sources.
+    // Ordinary stores and control transfers read their register operands. Exclusive stores return a
+    // status, pair loads write both results, and other instructions write their first register.
     match kind {
-        Kind::Store | Kind::StorePair | Kind::Branch | Kind::Call => {
+        Kind::Store
+            if matches!(
+                inst.opcode,
+                Opcode::STXR | Opcode::STXRB | Opcode::STXRH | Opcode::STLXR | Opcode::STLXRB | Opcode::STLXRH | Opcode::STXP | Opcode::STLXP
+            ) =>
+        {
+            let mut operands = regs_in_order.into_iter();
+            // The status is an output; a discarded WZR status is absent from this list.
+            if first_reg.as_deref() != Some("zr")
+                && let Some(status) = operands.next()
+            {
+                push_unique(&mut writes, status);
+            }
+            for value in operands {
+                push_unique(&mut reads, value);
+            }
+        }
+        Kind::Store | Kind::StorePair | Kind::Branch | Kind::Call | Kind::Ret => {
             for r in regs_in_order {
                 push_unique(&mut reads, r);
             }
@@ -794,7 +822,23 @@ fn decode_a64(bytes: &[u8], addr: u64, fmt: bool) -> Option<Insn> {
         _ => {
             let mut it = regs_in_order.into_iter();
             if let Some(d) = it.next() {
-                if op_name.ends_with('S') && first_reg.as_deref() == Some("zr") {
+                if first_reg.as_deref() == Some("zr")
+                    && (op_name.ends_with('S')
+                        || matches!(
+                            inst.opcode,
+                            Opcode::ADD
+                                | Opcode::SUB
+                                | Opcode::AND
+                                | Opcode::ORR
+                                | Opcode::EOR
+                                | Opcode::MADD
+                                | Opcode::MSUB
+                                | Opcode::SMULL
+                                | Opcode::UMULL
+                                | Opcode::SDIV
+                                | Opcode::UDIV
+                        ))
+                {
                     push_unique(&mut reads, d);
                 } else {
                     push_unique(&mut writes, d);
@@ -810,8 +854,14 @@ fn decode_a64(bytes: &[u8], addr: u64, fmt: bool) -> Option<Insn> {
             }
         }
     }
-    if matches!(flow, Flow::Return) {
+    // Authenticated returns have implicit link and stack inputs. Ordinary RET
+    // already names its selected register, which need not be x30.
+    if matches!(inst.opcode, Opcode::RETAA | Opcode::RETAB) {
         push_unique(&mut reads, "x30".into());
+        push_unique(&mut reads, "sp".into());
+        // FEAT_PAuth_LR with PSTATE.PACM=1 uses x16 as an additional modifier.
+        // Features and PSTATE are unknown here, so retain a conservative may-read.
+        push_unique(&mut reads, "x16".into());
     }
     if matches!(flow, Flow::Call { .. } | Flow::IndirectCall { .. }) {
         push_unique(&mut writes, "x30".into());
@@ -1072,11 +1122,18 @@ impl ArmConsts {
             }
             Kind::Add | Kind::Mov => {
                 let src = insn.ops.get(1).and_then(|o| if let Op::Reg(r) = o { xnum(r) } else { None });
-                let imm = insn.ops.get(2).and_then(|o| if let Op::Imm(v) = o { Some(*v) } else { None });
-                if let (Some(d), Some(s)) = (dst, src)
+                let offset = match insn.ops.get(2) {
+                    Some(Op::Imm(v)) => Some(*v),
+                    Some(Op::Reg(r)) if matches!(r.as_str(), "xzr" | "wzr") => Some(0),
+                    None if insn.kind == Kind::Mov => Some(0),
+                    _ => None,
+                };
+                if let (Some(d), Some(s), Some(offset)) = (dst, src, offset)
                     && let Some(base) = self.vals.get(s).copied().flatten()
                 {
-                    let v = base.wrapping_add(imm.unwrap_or(0) as u64);
+                    let sum = base.wrapping_add(offset as u64);
+                    let word = matches!(insn.ops.first(), Some(Op::Reg(r)) if r.starts_with('w'));
+                    let v = if word { u64::from(sum as u32) } else { sum };
                     insn.refs.push(v);
                     if let Some(x) = self.vals.get_mut(d) {
                         *x = Some(v);
@@ -1089,6 +1146,7 @@ impl ArmConsts {
             }
             Kind::Load | Kind::Store => {
                 if let Some(Op::Mem(m)) = insn.ops.get(1)
+                    && m.index.is_none()
                     && let Some(b) = m.base.as_deref().and_then(xnum)
                     && let Some(base) = self.vals.get(b).copied().flatten()
                 {
@@ -1097,9 +1155,9 @@ impl ArmConsts {
                     if insn.kind == Kind::Load
                         && let Some(d) = dst
                     {
-                        if let Some(x) = self.vals.get_mut(d) {
-                            *x = None;
-                        }
+                        // A load may also write its base. Retire every old value before
+                        // retaining the destination's newly resolved memory slot.
+                        self.forget_writes(insn);
                         if let Some(x) = self.slots.get_mut(d) {
                             *x = Some(a);
                         }
@@ -1122,8 +1180,8 @@ impl ArmConsts {
             _ => {}
         }
         if matches!(insn.flow, Flow::Call { .. } | Flow::IndirectCall { .. }) {
-            // Calls clobber the argument and temporary registers.
-            for i in 0..19 {
+            // Calls clobber argument/temporary registers and replace the link register.
+            for i in (0..19).chain(std::iter::once(30)) {
                 if let Some(v) = self.vals.get_mut(i) {
                     *v = None;
                 }
@@ -1133,6 +1191,10 @@ impl ArmConsts {
             }
             return;
         }
+        self.forget_writes(insn);
+    }
+
+    fn forget_writes(&mut self, insn: &Insn) {
         for w in &insn.writes {
             if let Some(n) = xnum(w) {
                 if let Some(v) = self.vals.get_mut(n) {

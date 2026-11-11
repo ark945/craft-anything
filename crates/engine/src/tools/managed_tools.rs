@@ -239,7 +239,19 @@ fn managed_source(ctx: &Ctx<'_>, v: &Value, ops: &[&str]) -> Result<ManagedSourc
     Ok(ManagedSource { input, evidence_id: Some(ev.id), type_names })
 }
 
-fn managed_limitations(a: &Assembly<'_>) -> Vec<Limitation> {
+fn metadata_limitations(warnings: &[String]) -> impl Iterator<Item = Limitation> + '_ {
+    warnings.iter().take(20).map(|w| Limitation::new("metadata", w.clone()))
+}
+
+/// Keep each graph view's leading diagnostic visible, then combine the remaining warnings.
+fn graph_metadata_limitations(sources: [&[String]; 3]) -> Vec<Limitation> {
+    let first = sources.iter().filter_map(|warnings| warnings.first());
+    let rest = sources.iter().flat_map(|warnings| warnings.iter().skip(1));
+    let mut seen = BTreeSet::new();
+    first.chain(rest).filter(|warning| seen.insert(warning.as_str())).take(20).map(|warning| Limitation::new("metadata", warning.clone())).collect()
+}
+
+fn managed_limitations(a: &Assembly<'_>, warnings: &[String]) -> Vec<Limitation> {
     let mut l = Vec::new();
     if a.pe.ready_to_run {
         l.push(Limitation::new(
@@ -250,9 +262,7 @@ fn managed_limitations(a: &Assembly<'_>) -> Vec<Limitation> {
     if a.pe.cli.flags & dotnet::pe::COMIMAGE_FLAGS_ILONLY == 0 {
         l.push(Limitation::new("mixed_mode", "The image is not IL-only (mixed-mode); native code inside it is not described here."));
     }
-    for w in a.md.warnings.iter().take(20) {
-        l.push(Limitation::new("metadata", w.clone()));
-    }
+    l.extend(metadata_limitations(warnings));
     l
 }
 
@@ -282,7 +292,7 @@ fn managed_assembly_show(ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput,
         inv.module_refs.len(),
         inv.target_frameworks.first().map(|t| format!(", targets {t}")).unwrap_or_default()
     );
-    let mut lims = managed_limitations(&a);
+    let mut lims = managed_limitations(&a, &inv.warnings);
     lims.push(Limitation::new("static_only", "Read from the file only; nothing was loaded or run, so reflection and runtime-generated code are not seen."));
     let result = serde_json::to_value(&inv).unwrap_or(Value::Null);
     let ev = builder(ctx, "managed_assembly_show", input.subject.clone(), json!({"path": input.path}))
@@ -331,7 +341,7 @@ fn managed_members_list(ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, 
         m.total_methods,
         m.total_fields
     );
-    let mut lims = managed_limitations(&a);
+    let mut lims = managed_limitations(&a, &m.warnings);
     lims.push(Limitation::new(
         "static_calls",
         "Call targets are the tokens named by call/callvirt/newobj/ldftn; virtual dispatch, delegates and reflection are not resolved.",
@@ -353,6 +363,7 @@ fn managed_members_list(ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutput, 
         "methods_with_bodies": bodies,
         "call_sites": calls,
         "decode_issues": issues,
+        "warnings": m.warnings,
         "types": types,
     }))
     .summary(summary)
@@ -381,7 +392,7 @@ fn managed_native_calls_list(ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOut
         nb.unmanaged_callers_only.len(),
         nb.library_imports.len()
     );
-    let mut lims = managed_limitations(&a);
+    let mut lims = managed_limitations(&a, &nb.warnings);
     lims.push(Limitation::new("declared_only", "These are declared boundaries; whether each native function exists is checked by managed_native_calls_verify. Calls through function pointers or NativeLibrary.Load at run time are not listed."));
     let total = nb.pinvokes.len() + nb.internal_calls.len() + nb.native_code_methods.len();
     let ev = builder(ctx, "managed_native_calls_list", input.subject.clone(), json!({"path": input.path}))
@@ -572,6 +583,7 @@ fn managed_assemblies_compare(ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOu
     }))
     .summary(summary)
     .confidence(Confidence::Derived)
+    .limitations(metadata_limitations(&lm.warnings).chain(metadata_limitations(&rm.warnings)))
     .limitation(Limitation::new(
         "matching_heuristic",
         "Renames are matched only when the IL and signature (or the structure) are unique on both sides; duplicates stay ambiguous and appear as added/removed.",
@@ -721,6 +733,7 @@ fn managed_native_calls_verify(ctx: &mut Ctx<'_>, params: Value) -> Result<ToolO
         .result(json!({"counts": counts, "pinvokes": rows, "native_libraries": supplied, "internal_calls": nb.internal_calls.len()}))
         .summary(summary)
         .confidence(Confidence::Derived)
+        .limitations(metadata_limitations(&nb.warnings))
         .limitation(Limitation::new(
             "name_only",
             "Checks that an export with the right name exists; argument types, calling conventions and the library the runtime would actually load at run time are not checked.",
@@ -844,6 +857,7 @@ fn managed_reconstruction_check(ctx: &mut Ctx<'_>, params: Value) -> Result<Tool
             "The C# scanner reads declarations without a full parse; unusual syntax, macros-like source generators or partial types split oddly may be missed.",
         ),
     ];
+    lims.extend(metadata_limitations(&members.warnings));
     lims.extend(notes.iter().map(|n| Limitation::new("source_read", n.clone())));
     lims.extend(scan.warnings.iter().take(20).map(|w| Limitation::new("source_scan", w.clone())));
     let mut b = builder(
@@ -1012,6 +1026,7 @@ fn managed_app_graph_build(ctx: &mut Ctx<'_>, params: Value) -> Result<ToolOutpu
         .result(json!({"platform": "dotnet", "recognised": true, "graph": {"nodes": g.nodes, "edges": g.edges}, "counts": kinds, "truncated": g.truncated}))
         .summary(summary)
         .confidence(Confidence::Derived)
+        .limitations(graph_metadata_limitations([&inv.warnings, &members.warnings, &nb.warnings]))
         .limitation(Limitation::new("static_calls", "Call edges come from IL call tokens; virtual dispatch, delegates and reflection are not resolved."))
         .coverage(if g.truncated { super::static_input::partial(node_count as u64) } else { Coverage::complete(node_count as u64) });
     if g.truncated {

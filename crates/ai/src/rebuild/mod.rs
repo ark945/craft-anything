@@ -266,7 +266,7 @@ pub struct RebuildRun {
 
 impl RebuildRun {
     /// Start a run on a worker thread. Fails fast (before any work) when no coding agent is set up.
-    pub fn start(hub: &AiHub, ws: Workspace, opts: RunOptions) -> Result<RebuildRun, ToolError> {
+    pub fn start(hub: &AiHub, mut ws: Workspace, opts: RunOptions) -> Result<RebuildRun, ToolError> {
         let cfg = hub.config();
         let entry = builder_backend(&cfg, opts.backend.as_deref().or_else(|| project_builder(&cfg, &ws)))?;
         // The person's choice of mode is a session setting. A run that waited its turn uses the mode
@@ -313,9 +313,12 @@ impl RebuildRun {
         let preview: Arc<Mutex<Option<StaticServer>>> = Arc::default();
         let notes: Arc<Mutex<Vec<Note>>> = Arc::default();
         let inbox = Inbox::new(ws.inbox_dir());
-        // Notes left by an earlier run would be handed over again (ids restart with the process);
-        // cleared before the app can add any to this one.
-        notes::clear(&notes::notes_dir(&ws.inbox_dir()));
+        // Notes an earlier run never handed over (the app closed while they waited, #1620) wait for
+        // this run's builder; their old files go before the app can add any to this one.
+        let left = notes::take_left(&notes::notes_dir(&ws.inbox_dir()), opts.message.is_none());
+        if !left.is_empty() {
+            left_notes_are_a_request(&mut ws);
+        }
         let root = ws.root.clone();
         // The project's conversation: the run keeps it in the folder as it goes.
         let feed = Arc::new(Mutex::new(feed::FeedLog::open(&ws)));
@@ -364,7 +367,13 @@ impl RebuildRun {
             })
             .map_err(|e| ToolError::internal(e.to_string()))?;
         let activity = feed.lock().unwrap_or_else(PoisonError::into_inner).activity();
-        Ok(RebuildRun { rx, stop, inbox, running, preview, notes, clean_room, feed, root, started: Instant::now(), activity })
+        let run = RebuildRun { rx, stop, inbox, running, preview, notes, clean_room, feed, root, started: Instant::now(), activity };
+        // Waiting again with files of their own: the builder takes them at its next step or after
+        // its turn, and a run that ends first hands them to the next one, as with any note.
+        for n in left {
+            run.add_note(n.text, n.shown, n.pictures);
+        }
+        Ok(run)
     }
 
     /// Add something while it works; the agent reads it at its next step, and only then does it
@@ -393,7 +402,8 @@ impl RebuildRun {
         // Also left for an agent that takes notes at its next step; without it, after the turn.
         // The in-memory note keeps the raw text: if a later run takes it, that run filters the
         // answers by its own mode instead of inheriting this run's.
-        if let Err(e) = notes::hand_over(&notes::notes_dir(self.inbox.dir()), id, &file_text) {
+        let left = notes::Left { text: text.clone(), shown: shown.clone(), pictures: pictures.clone() };
+        if let Err(e) = notes::hand_over(&notes::notes_dir(self.inbox.dir()), id, &file_text, Some(&left)) {
             log::warn!("A note waits for the builder's turn to end: {}", e.message);
         }
         self.notes.lock().unwrap_or_else(PoisonError::into_inner).push(Note { id, text, shown, pictures, questions });
@@ -1404,6 +1414,30 @@ impl Worker {
                 self.emit(RunEvent::Ask(r));
             }
         }
+    }
+}
+
+/// Notes an earlier run left are a request the person made, as a message is: they start the counts
+/// of unchanged turns and of checks that found no working build again, or a run carrying on from a
+/// build that reached either limit would stop before its builder reads them. Their files are gone
+/// by now, so a count that can't be saved is logged and the run starts anyway. The count is saved
+/// on the project as it is on disk: a run that waited in the queue holds a copy from before the
+/// run ahead of it finished, and saving that would undo what that run recorded (its session).
+fn left_notes_are_a_request(ws: &mut Workspace) {
+    let progress = BuildProgress::load(&ws.root).and_then(|mut p| {
+        p.reset();
+        p.save(&ws.root)
+    });
+    ws.manifest.not_working_checks = 0;
+    let checks = Workspace::open(&ws.root).and_then(|mut now| {
+        if now.manifest.not_working_checks == 0 {
+            return Ok(());
+        }
+        now.manifest.not_working_checks = 0;
+        now.save()
+    });
+    if let Err(e) = progress.and(checks) {
+        log::warn!("Couldn't start the build's counts again for the notes left waiting: {}", e.message);
     }
 }
 
